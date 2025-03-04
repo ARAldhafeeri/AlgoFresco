@@ -1,3 +1,4 @@
 exclude tests/*
 exclude examples/*
 exclude .github/*
+include README.md
