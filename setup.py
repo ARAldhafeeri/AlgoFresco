@@ -1,10 +1,10 @@
 from setuptools import setup, find_packages
-from zenaura import version
+from algofresco.version import version
 with open("readme.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name='zenaura',
+    name='algofresco',
     version=version,
     description="A library to visulize algorithms and data structures",
     author="Ahmed Rakan",

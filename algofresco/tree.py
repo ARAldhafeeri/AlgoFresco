@@ -1,240 +1,221 @@
 import matplotlib.pyplot as plt
 import networkx as nx
-from typing import  List, Any, Tuple
+from typing import  Any, Tuple, Optional, Dict, List
 from matplotlib.animation import FuncAnimation
-from ds import DataStructureVisualizer
-from tracer import DataStructureTracer
+from .ds import DataStructureVisualizer 
+from .tracer import DataStructureTracer
 
 class TreeVisualizer(DataStructureVisualizer):
-    """Visualizes operations on trees."""
+    """Visualizes tree operations with code context tracking."""
     
     def __init__(self, tracer: DataStructureTracer):
-        """Initialize the tree visualizer."""
         super().__init__(tracer)
-    
-    def _tree_to_networkx(self, tree_node):
-        """
-        Convert a tree node to a NetworkX graph.
+        self.layout_cache: Dict[int, Dict[Any, Tuple[float, float]]] = {}
+
+    def _tree_to_networkx(self, tree_node) -> Optional[nx.DiGraph]:
+        """Convert tree structure to NetworkX graph with validation."""
+        try:
+            G = nx.DiGraph()
+            if not tree_node:  # Handle empty trees
+                return G
+
+            # Handle different tree representations
+            if hasattr(tree_node, 'left') and hasattr(tree_node, 'right'):
+                self._add_binary_nodes(G, tree_node)
+            elif hasattr(tree_node, 'children'):
+                self._add_nary_nodes(G, tree_node)
+            elif isinstance(tree_node, dict) and 'value' in tree_node:
+                self._add_dict_nodes(G, tree_node)
+            else:
+                raise ValueError("Unsupported tree format")
+                
+            return G
+        except Exception as e:
+            print(f"Error converting tree: {e}")
+            return None
+
+    def _add_binary_nodes(self, G: nx.DiGraph, node, node_id: int = 0):
+        """Recursively add binary tree nodes."""
+        if node is None:
+            return
+            
+        label = str(getattr(node, 'val', getattr(node, 'value', node)))
+        G.add_node(node_id, label=label)
         
-        Args:
-            tree_node: The root node of a tree
+        if node.left:
+            left_id = len(G.nodes)
+            G.add_edge(node_id, left_id)
+            self._add_binary_nodes(G, node.left, left_id)
             
-        Returns:
-            NetworkX DiGraph
-        """
-        G = nx.DiGraph()
+        if node.right:
+            right_id = len(G.nodes)
+            G.add_edge(node_id, right_id)
+            self._add_binary_nodes(G, node.right, right_id)
+
+    def _add_nary_nodes(self, G: nx.DiGraph, node, node_id: int = 0):
+        """Recursively add n-ary tree nodes."""
+        if node is None:
+            return
+            
+        label = str(getattr(node, 'val', getattr(node, 'value', node)))
+        G.add_node(node_id, label=label)
         
-        # Handle different tree node representations
-        if hasattr(tree_node, 'left') and hasattr(tree_node, 'right'):
-            # Binary tree node with left and right children
-            def add_nodes(node, node_id=0):
-                if node is None:
-                    return
-                
-                # Add the current node
-                label = str(getattr(node, 'val', getattr(node, 'value', node)))
-                G.add_node(node_id, label=label)
-                
-                # Process left child
-                if node.left:
-                    left_id = len(G.nodes)
-                    G.add_edge(node_id, left_id)
-                    add_nodes(node.left, left_id)
-                
-                # Process right child
-                if node.right:
-                    right_id = len(G.nodes)
-                    G.add_edge(node_id, right_id)
-                    add_nodes(node.right, right_id)
+        for child in getattr(node, 'children', []):
+            if child:
+                child_id = len(G.nodes)
+                G.add_edge(node_id, child_id)
+                self._add_nary_nodes(G, child, child_id)
+
+    def _add_dict_nodes(self, G: nx.DiGraph, node: Dict, node_id: int = 0):
+        """Recursively add dictionary-based tree nodes."""
+        if not node:
+            return
             
-            add_nodes(tree_node)
-            
-        elif hasattr(tree_node, 'children'):
-            # Node with a list of children
-            def add_nodes(node, node_id=0):
-                if node is None:
-                    return
-                
-                # Add the current node
-                label = str(getattr(node, 'val', getattr(node, 'value', node)))
-                G.add_node(node_id, label=label)
-                
-                # Process all children
-                if node.children:
-                    for child in node.children:
-                        if child:
-                            child_id = len(G.nodes)
-                            G.add_edge(node_id, child_id)
-                            add_nodes(child, child_id)
-            
-            add_nodes(tree_node)
-            
-        elif isinstance(tree_node, dict) and 'value' in tree_node:
-            # Dictionary representation
-            def add_nodes(node, node_id=0):
-                if node is None:
-                    return
-                
-                # Add the current node
-                G.add_node(node_id, label=str(node.get('value', '')))
-                
-                # Process all children
-                children = node.get('children', [])
-                for child in children:
-                    if child:
-                        child_id = len(G.nodes)
-                        G.add_edge(node_id, child_id)
-                        add_nodes(child, child_id)
-            
-            add_nodes(tree_node)
-            
-        return G
-    
+        label = str(node.get('value', ''))
+        G.add_node(node_id, label=label)
+        
+        for child in node.get('children', []):
+            if child:
+                child_id = len(G.nodes)
+                G.add_edge(node_id, child_id)
+                self._add_dict_nodes(G, child, child_id)
+
     def display_snapshot(self, step: int = -1, figsize: Tuple[int, int] = (10, 6),
-                         highlight_nodes: List[Any] = None,
-                         layout: str = 'dot',
-                         title: str = None):
+                        highlight_nodes: Optional[List[Any]] = None,
+                        layout: str = 'dot', title: Optional[str] = None,
+                        show_code: bool = True):
         """
-        Display a specific snapshot of a tree.
+        Display tree snapshot with code context.
         
         Args:
-            step: The step to display (-1 for latest)
-            figsize: Figure size
-            highlight_nodes: List of node values to highlight
-            layout: Layout algorithm to use ('dot', 'circular', etc.)
-            title: Title for the visualization
+            step: Snapshot step (-1 for latest)
+            figsize: Figure dimensions
+            highlight_nodes: Node values to highlight
+            layout: Layout algorithm ('dot', 'circular', etc.)
+            title: Custom title
+            show_code: Show associated code
         """
         data, metadata = self.tracer.get_snapshot(step)
-        if data is None:
-            print("No data available")
-            return
-            
-        plt.figure(figsize=figsize)
+        G = self._tree_to_networkx(data) if data else nx.DiGraph()
+
+        fig, main_ax, code_ax = self._create_figure_with_code(figsize, show_code)
         
-        # Convert tree to NetworkX graph
-        G = self._tree_to_networkx(data)
-        
-        if not G.nodes:
-            plt.text(0.5, 0.5, "Empty Tree", ha='center', va='center')
-            plt.axis('off')
-            plt.tight_layout()
-            plt.show()
-            return
-            
-        # Set up node colors
-        node_colors = []
-        for node in G.nodes:
-            node_data = G.nodes[node]
-            label = node_data.get('label', '')
-            if highlight_nodes and label in [str(h) for h in highlight_nodes]:
-                node_colors.append('#ff7f7f')  # Highlight color
-            else:
-                node_colors.append('#aed9e6')  # Default color
-        
-        # Create layout
-        if layout == 'dot':
-            try:
-                # Try using pygraphviz for better tree layout
-                pos = nx.nx_agraph.graphviz_layout(G, prog='dot')
-            except:
-                # Fall back to builtin layout
-                pos = nx.spring_layout(G)
-        elif layout == 'circular':
-            pos = nx.circular_layout(G)
+        if not G or len(G.nodes) == 0:
+            main_ax.text(0.5, 0.5, "Empty Tree", ha='center', va='center', fontsize=14)
         else:
-            pos = nx.spring_layout(G)
+            # Calculate or retrieve layout
+            pos = self._calculate_layout(G, layout, step)
+            
+            # Get node colors
+            node_colors = self._get_node_colors(G, highlight_nodes, metadata)
+            
+            # Draw tree components
+            nx.draw_networkx_nodes(G, pos, ax=main_ax, node_color=node_colors, node_size=1500)
+            nx.draw_networkx_edges(G, pos, ax=main_ax, arrows=True, edge_color='#666666')
+            labels = {n: G.nodes[n].get('label', '') for n in G.nodes}
+            nx.draw_networkx_labels(G, pos, labels=labels, ax=main_ax, font_size=10)
+
+        # Title handling
+        title = title or metadata.get('description', f"Step {metadata.get('step', 'N/A')}")
+        fig.suptitle(title, y=0.95 if show_code else 0.9, fontsize=14)
         
-        # Draw the graph
-        nx.draw(G, pos, 
-                node_color=node_colors, 
-                node_size=2500, 
-                arrows=True,
-                with_labels=False, 
-                edge_color='#666666')
-        
-        # Add node labels
-        node_labels = {node: G.nodes[node].get('label', '') for node in G.nodes}
-        nx.draw_networkx_labels(G, pos, labels=node_labels, font_size=10)
-        
-        # Set title
-        if title:
-            plt.title(title)
-        elif metadata.get('description'):
-            plt.title(f"Step {metadata['step']}: {metadata['description']}")
-        else:
-            plt.title(f"Step {metadata['step']}")
-        
-        plt.axis('off')
+        # Code display
+        if show_code and code_ax is not None:
+            self._display_code(code_ax, metadata)
+
+        main_ax.axis('off')
         plt.tight_layout()
         plt.show()
-    
+
     def create_animation(self, figsize: Tuple[int, int] = (10, 6), 
                         interval: int = 1000, repeat: bool = False,
-                        layout: str = 'dot'):
+                        layout: str = 'dot', show_code: bool = True) -> Optional[FuncAnimation]:
         """
-        Create an animation of tree operations.
+        Create tree operation animation with code context.
         
         Args:
-            figsize: Figure size
-            interval: Time between frames in milliseconds
-            repeat: Whether to loop the animation
-            layout: Layout algorithm to use
+            figsize: Figure dimensions
+            interval: Frame delay (ms)
+            repeat: Loop animation
+            layout: Layout algorithm
+            show_code: Show code context
             
         Returns:
-            Matplotlib animation
+            Matplotlib animation object
         """
         if not self.tracer.snapshots:
             print("No snapshots available")
             return None
-            
-        fig, ax = plt.subplots(figsize=figsize)
-        
-        def update(frame):
-            ax.clear()
-            data = self.tracer.snapshots[frame]
+
+        fig, main_ax, code_ax = self._create_figure_with_code(figsize, show_code)
+        plt.tight_layout()
+
+        # Precompute layouts and graphs
+        graphs = [self._tree_to_networkx(data) for data in self.tracer.snapshots]
+        layout_cache = [self._calculate_layout(G, layout, i) 
+                       for i, G in enumerate(graphs)]
+
+        def update(frame: int):
+            main_ax.clear()
+            if code_ax is not None:
+                code_ax.clear()
+                code_ax.axis('off')
+
+            G = graphs[frame]
             metadata = self.tracer.metadata[frame]
-            
-            # Convert tree to NetworkX graph
-            G = self._tree_to_networkx(data)
-            
-            if not G.nodes:
-                ax.text(0.5, 0.5, "Empty Tree", ha='center', va='center')
-                ax.axis('off')
-                return
+            pos = layout_cache[frame]
+
+            if not G or len(G.nodes) == 0:
+                main_ax.text(0.5, 0.5, "Empty Tree", ha='center', va='center')
+            else:
+                # Get styling from metadata
+                h_nodes = metadata.get('highlight_nodes', [])
+                node_colors = self._get_node_colors(G, h_nodes, metadata)
                 
-            # Create layout
+                # Draw components
+                nx.draw_networkx_nodes(G, pos, ax=main_ax, node_color=node_colors, node_size=1500)
+                nx.draw_networkx_edges(G, pos, ax=main_ax, arrows=True, edge_color='#666666')
+                labels = {n: G.nodes[n].get('label', '') for n in G.nodes}
+                nx.draw_networkx_labels(G, pos, labels=labels, ax=main_ax, font_size=10)
+
+            # Set title and code
+            main_ax.set_title(f"Step {metadata['step']}: {metadata.get('description', '')}")
+            if show_code and code_ax is not None:
+                self._display_code(code_ax, metadata)
+
+            main_ax.axis('off')
+
+        anim = FuncAnimation(fig, update, frames=len(self.tracer.snapshots),
+                            interval=interval, repeat=repeat)
+        plt.close()
+        return anim
+
+    def _calculate_layout(self, G: nx.DiGraph, layout: str, step: int) -> Dict[Any, Tuple[float, float]]:
+        """Calculate tree layout with validation and caching."""
+        if not G or len(G.nodes) == 0:
+            return {}
+
+        if step in self.layout_cache:
+            return self.layout_cache[step]
+
+        try:
             if layout == 'dot':
-                try:
-                    pos = nx.nx_agraph.graphviz_layout(G, prog='dot')
-                except:
-                    pos = nx.spring_layout(G)
+                pos = nx.nx_agraph.graphviz_layout(G, prog='dot')
             elif layout == 'circular':
                 pos = nx.circular_layout(G)
             else:
                 pos = nx.spring_layout(G)
-            
-            # Draw the graph
-            nx.draw(G, pos, ax=ax,
-                    node_color='#aed9e6', 
-                    node_size=2500, 
-                    arrows=True,
-                    with_labels=False, 
-                    edge_color='#666666')
-            
-            # Add node labels
-            node_labels = {node: G.nodes[node].get('label', '') for node in G.nodes}
-            nx.draw_networkx_labels(G, pos, labels=node_labels, font_size=10, ax=ax)
-            
-            # Set title based on metadata
-            if metadata.get('description'):
-                ax.set_title(f"Step {metadata['step']}: {metadata['description']}")
-            else:
-                ax.set_title(f"Step {metadata['step']}")
-            
-            ax.axis('off')
-        
-        anim = FuncAnimation(fig, update, frames=len(self.tracer.snapshots),
-                            interval=interval, repeat=repeat)
-        
-        plt.close()  # Prevent duplicate display
-        return anim
+        except Exception as e:
+            print(f"Layout {layout} failed, using spring layout: {e}")
+            pos = nx.spring_layout(G)
+
+        self.layout_cache[step] = pos
+        return pos
+
+    def _get_node_colors(self, G: nx.DiGraph, 
+                        highlights: Optional[List[Any]],
+                        metadata: Dict) -> List[str]:
+        """Generate node colors based on highlights."""
+        label_map = {n: G.nodes[n].get('label', '') for n in G.nodes}
+        h_labels = set(str(h) for h in (highlights or [])) | set(metadata.get('highlight_nodes', []))
+        return ['#ff7f7f' if label_map[n] in h_labels else '#aed9e6' for n in G.nodes]

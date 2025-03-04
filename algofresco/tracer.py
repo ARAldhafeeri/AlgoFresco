@@ -75,7 +75,6 @@ class DataStructureTracer:
         # Override code line if provided
         if custom_code_line:
             caller_info['code_line'] = custom_code_line
-        
         metadata = {
             'step': self.current_step,
             'description': description,
@@ -140,7 +139,7 @@ class DataStructureTracer:
             else:
                 # Try to find the data structure in kwargs
                 sig = inspect.signature(func)
-                first_param = next(iter(sig.parameters))
+                first_param = next(iter(sig.parameters), None)
                 data_structure = kwargs.get(first_param)
             
             # Capture initial state

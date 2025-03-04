@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 from typing import Tuple, Any, Dict
 
-
 class DataStructureVisualizer:
     """Base class for visualizing algorithm execution on data structures."""
     
@@ -90,11 +89,7 @@ class DataStructureVisualizer:
         code_line = metadata.get('code_line', 'No code information available')
         function = metadata.get('function', '')
         line_num = metadata.get('line_num', '')
-        
+        description = metadata.get('description', '')
+        info_line = f"Line: {line_num}  - Description: {description}"
         # Create text to display
-        if function and line_num:
-            header = f"Function: {function}, Line: {line_num}"
-            ax.text(0.01, 0.7, header, fontsize=10, color='blue')
-        
-        # Display the actual code
-        ax.text(0.01, 0.3, code_line, fontsize=12, fontweight='bold', color='black')
+        ax.text(0.01, 0.3, info_line, fontsize=12, fontweight='bold', color='black')
